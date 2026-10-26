@@ -19,6 +19,7 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
   const planEvents: boolean[] = []
   const appendedEntries: Array<{ customType: string; data: unknown }> = []
   const notifications: Array<{ message: string; level: string }> = []
+  const sentUserMessages: string[] = []
   let activeTools = [...initialTools]
   let setActiveToolsCalls = 0
 
@@ -54,6 +55,9 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
     },
     appendEntry(customType: string, data: unknown) {
       appendedEntries.push({ customType, data })
+    },
+    sendUserMessage(content: string) {
+      sentUserMessages.push(content)
     },
     setActiveTools(toolNames: string[]) {
       setActiveToolsCalls += 1
@@ -96,6 +100,7 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
     shortcut,
     planEvents,
     notifications,
+    sentUserMessages,
     appendedEntries,
     activeTools: () => [...activeTools],
     /** 记录扩展是否重建过 active tools，用于保护缓存稳定性。 */
@@ -145,6 +150,21 @@ describe('Plan 模式', () => {
     expect(runtime.planEvents).toEqual([true, false])
     await runtime.shortcut()
     expect(runtime.planEvents).toEqual([true, false, true])
+
+    // /plan enter 与 /plan 等价：只进入，重复调用不重复广播。
+    await runtime.command('exit')
+    runtime.sentUserMessages.length = 0
+    await runtime.command('enter')
+    await runtime.command('enter')
+    expect(runtime.planEvents).toEqual([true, false, true, false, true])
+    expect(runtime.sentUserMessages).toEqual([])
+
+    // 带参数的 enter 在进入的同时把参数作为提示词发送。
+    await runtime.command('exit')
+    runtime.sentUserMessages.length = 0
+    await runtime.command('enter 看下构建脚本')
+    expect(runtime.planEvents).toEqual([true, false, true, false, true, false, true])
+    expect(runtime.sentUserMessages).toEqual(['看下构建脚本'])
   })
 
   test('新运行时不恢复 Plan 状态', async () => {
@@ -193,17 +213,31 @@ describe('Plan 模式', () => {
     expect(extended.activeTools()).toEqual(['read', 'bash', 'edit', 'write', 'mcp_write'])
   })
 
-  test('status 查询不改状态，未知参数给出用法', async () => {
+  test('status 查询不改状态，其余参数当作提示词进入 Plan', async () => {
     const runtime = createRuntime()
     await runtime.command('')
     await runtime.command('status')
     expect(runtime.planEvents).toEqual([true])
 
-    await runtime.command('bogus')
+    // 任意非子命令参数视为提示词：进入 Plan 并原样发送。
+    runtime.sentUserMessages.length = 0
+    await runtime.command('改一下这个函数')
     expect(runtime.planEvents).toEqual([true])
-    expect(runtime.notifications.at(-1)).toEqual({
-      message: '用法：/plan、/plan exit、/plan status',
-      level: 'error'
-    })
+    expect(runtime.sentUserMessages).toEqual(['改一下这个函数'])
+  })
+
+  test('exit 后的文字作为用户消息发送', async () => {
+    const runtime = createRuntime()
+    await runtime.command('')
+
+    // 退出与发提示词同一次完成，换行不被压平。
+    await runtime.command('exit 执行这些改动\n第二行')
+    expect(runtime.planEvents).toEqual([true, false])
+    expect(runtime.sentUserMessages).toEqual(['执行这些改动\n第二行'])
+    // 不带提示词时只退出，不发送任何消息。
+    await runtime.command('')
+    runtime.sentUserMessages.length = 0
+    await runtime.command('exit')
+    expect(runtime.sentUserMessages).toEqual([])
   })
 })

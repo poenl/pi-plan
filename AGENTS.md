@@ -5,8 +5,9 @@ pi 扩展：Plan 模式。进入后只允许读取与检查，`edit`/`write` 在
 ## 项目结构
 
 - src/index.ts：`PLAN_MODE_EVENT`（事件通道 `pi-plan:mode`）+ 状态管理 `setPlanMode` +
-  `Tab` 快捷键 + `/plan` 命令（`exit`/`status` 子命令与补全）+ `context` 事件注入提醒 +
-  `tool_call` 拦截 edit/write + `session_start` 重置 + 两段提醒文案常量
+  `Tab` 快捷键 + `/plan` 命令（`enter`/`exit`/`status` 子命令与补全，`enter`/`exit` 可带提示词发送）
+  - `context` 事件注入提醒 +
+    `tool_call` 拦截 edit/write + `session_start` 重置 + 两段提醒文案常量
 - tests/plan.test.ts：最小 Pi API 替身下的状态、注入、拦截与工具列表不变性用例
 
 ## 常用命令

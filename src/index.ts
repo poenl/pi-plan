@@ -45,10 +45,11 @@ export default function (pi: ExtensionAPI) {
   })
 
   pi.registerCommand('plan', {
-    description: '进入、退出或查看 Plan 模式状态',
+    description: '进入、退出或查看 Plan 模式状态（/plan 与 /plan exit 后可跟提示词直接发送）',
     // 仅为已支持的子命令提供补全，避免把未知参数当成状态切换。
     getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
       const items: AutocompleteItem[] = [
+        { value: 'enter', label: 'enter' },
         { value: 'exit', label: 'exit' },
         { value: 'status', label: 'status' }
       ]
@@ -56,7 +57,11 @@ export default function (pi: ExtensionAPI) {
       return matches.length > 0 ? matches : null
     },
     handler: async (args, ctx) => {
-      const command = args.trim()
+      const trimmed = args.trim()
+      // 只按首个空白切分子命令，剩余部分原样保留（含换行的多行提示词不被压平）。
+      const splitAt = trimmed.search(/\s/)
+      const command = splitAt === -1 ? trimmed : trimmed.slice(0, splitAt)
+      const remainder = splitAt === -1 ? '' : trimmed.slice(splitAt).trim()
       if (command === 'status') {
         ctx.ui.notify(planActive ? 'Plan 模式：已激活' : 'Plan 模式：未激活', 'info')
         return
@@ -64,14 +69,21 @@ export default function (pi: ExtensionAPI) {
       if (command === 'exit') {
         const changed = setPlanMode(false)
         ctx.ui.notify(changed ? 'Plan 模式已退出' : 'Plan 模式本来就是关闭的', 'info')
+        // 退出后紧跟的文字作为用户消息发送：先退出再发，本轮请求即为可执行状态。
+        if (remainder) pi.sendUserMessage(remainder)
         return
       }
-      if (command === '') {
+      // enter 与空参数等价；带参数时先进入 Plan，再把参数作为提示词发送。
+      if (command === '' || command === 'enter') {
         const changed = setPlanMode(true)
         ctx.ui.notify(changed ? 'Plan 模式已进入' : 'Plan 模式已经开启', 'info')
+        if (remainder) pi.sendUserMessage(remainder)
         return
       }
-      ctx.ui.notify('用法：/plan、/plan exit、/plan status', 'error')
+      // 其余参数不是子命令，整体作为提示词：先进入 Plan，再作为用户消息发送。
+      const entered = setPlanMode(true)
+      ctx.ui.notify(entered ? 'Plan 模式已进入' : 'Plan 模式已经开启', 'info')
+      pi.sendUserMessage(trimmed)
     }
   })
 

@@ -7,12 +7,13 @@ A pi extension: Plan mode. While active, only reading and inspection are allowed
 
 ## Usage
 
-| Action         | Effect                          |
-| -------------- | ------------------------------- |
-| `Tab`          | Toggle Plan mode (enter / exit) |
-| `/plan`        | Enter Plan mode                 |
-| `/plan exit`   | Exit Plan mode                  |
-| `/plan status` | Show current state              |
+| Action                 | Effect                                               |
+| ---------------------- | ---------------------------------------------------- |
+| `Tab`                  | Toggle Plan mode (enter / exit)                      |
+| `/plan [prompt]`       | Enter Plan mode; with text, also send it as a prompt |
+| `/plan enter [prompt]` | Same as `/plan`                                      |
+| `/plan exit [prompt]`  | Exit Plan mode; with text, also send it as a prompt  |
+| `/plan status`         | Show current state                                   |
 
 While active, each request gets a temporary reminder (`# Plan Mode - System Reminder`)
 appended; after exiting it gets `# Exited Plan Mode`. The reminder applies to that one
