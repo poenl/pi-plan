@@ -1,0 +1,35 @@
+{
+  "name": "pi-plan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi 扩展：Plan 模式，只输出方案，拦截 edit/write 落地",
+  "type": "module",
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./src"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && eslint --cache --cache-location node_modules/.cache/eslint/.eslintcache .",
+    "format": "prettier --write .",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@earendil-works/pi-tui": "^1.1.0",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  }
+}
