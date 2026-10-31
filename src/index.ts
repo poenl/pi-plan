@@ -124,6 +124,8 @@ export const PLAN_REMINDER = `<system-reminder>
 
 Prohibit any file/system modifications; only allow read/inspection. And since the user currently does not require execution, you must not make any edits or changes.
 
+Not having exited plan mode means the plan is not confirmed: output the plan only; do not ask, suggest or persuade the user to exit plan mode, and do not ask whether to start executing.
+
 ---
 
 ## Important
