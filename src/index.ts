@@ -34,6 +34,10 @@ export default function (pi: ExtensionAPI) {
     return true
   }
 
+  // 命令在 agent 运行中也会立即执行，此时发消息必须指明排队位置，否则 Pi 直接拒绝；
+  // 该参数仅在运行中被读取，空闲时忽略，因此平时行为不变。
+  const DELIVER_AS_STEER = { deliverAs: 'steer' } as const
+
   pi.registerShortcut('tab', {
     description: '切换 Plan 模式（进入时拦截 edit/write）',
     handler: async (ctx) => {
@@ -70,20 +74,20 @@ export default function (pi: ExtensionAPI) {
         const changed = setPlanMode(false)
         ctx.ui.notify(changed ? 'Plan 模式已退出' : 'Plan 模式本来就是关闭的', 'info')
         // 退出后紧跟的文字作为用户消息发送：先退出再发，本轮请求即为可执行状态。
-        if (remainder) pi.sendUserMessage(remainder)
+        if (remainder) pi.sendUserMessage(remainder, DELIVER_AS_STEER)
         return
       }
       // enter 与空参数等价；带参数时先进入 Plan，再把参数作为提示词发送。
       if (command === '' || command === 'enter') {
         const changed = setPlanMode(true)
         ctx.ui.notify(changed ? 'Plan 模式已进入' : 'Plan 模式已经开启', 'info')
-        if (remainder) pi.sendUserMessage(remainder)
+        if (remainder) pi.sendUserMessage(remainder, DELIVER_AS_STEER)
         return
       }
       // 其余参数不是子命令，整体作为提示词：先进入 Plan，再作为用户消息发送。
       const entered = setPlanMode(true)
       ctx.ui.notify(entered ? 'Plan 模式已进入' : 'Plan 模式已经开启', 'info')
-      pi.sendUserMessage(trimmed)
+      pi.sendUserMessage(trimmed, DELIVER_AS_STEER)
     }
   })
 

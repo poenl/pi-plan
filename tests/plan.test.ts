@@ -20,6 +20,8 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
   const appendedEntries: Array<{ customType: string; data: unknown }> = []
   const notifications: Array<{ message: string; level: string }> = []
   const sentUserMessages: string[] = []
+  /** 记录每次发消息时指定的排队位置，验证运行中发消息不再被 Pi 拒绝。 */
+  const sentUserMessageOptions: Array<{ deliverAs?: string } | undefined> = []
   let activeTools = [...initialTools]
   let setActiveToolsCalls = 0
 
@@ -56,8 +58,9 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
     appendEntry(customType: string, data: unknown) {
       appendedEntries.push({ customType, data })
     },
-    sendUserMessage(content: string) {
+    sendUserMessage(content: string, options?: { deliverAs?: string }) {
       sentUserMessages.push(content)
+      sentUserMessageOptions.push(options)
     },
     setActiveTools(toolNames: string[]) {
       setActiveToolsCalls += 1
@@ -101,6 +104,7 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
     planEvents,
     notifications,
     sentUserMessages,
+    sentUserMessageOptions,
     appendedEntries,
     activeTools: () => [...activeTools],
     /** 记录扩展是否重建过 active tools，用于保护缓存稳定性。 */
@@ -224,6 +228,21 @@ describe('Plan 模式', () => {
     await runtime.command('改一下这个函数')
     expect(runtime.planEvents).toEqual([true])
     expect(runtime.sentUserMessages).toEqual(['改一下这个函数'])
+  })
+
+  test('运行中发送提示词时指定 steering 排队位置', async () => {
+    // agent 运行中命令会立即执行，此时发消息缺 deliverAs 会被 Pi 报错拒绝。
+    const runtime = createRuntime()
+    await runtime.command('enter 看下构建脚本')
+    await runtime.command('exit 执行这些改动')
+    await runtime.command('改一下这个函数')
+
+    expect(runtime.sentUserMessages).toHaveLength(3)
+    expect(runtime.sentUserMessageOptions).toEqual([
+      { deliverAs: 'steer' },
+      { deliverAs: 'steer' },
+      { deliverAs: 'steer' }
+    ])
   })
 
   test('exit 后的文字作为用户消息发送', async () => {
