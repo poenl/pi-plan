@@ -8,7 +8,7 @@ pi 扩展：Plan 模式。进入后只允许读取与检查，`edit`/`write` 在
 
 | 操作                   | 作用                                       |
 | ---------------------- | ------------------------------------------ |
-| `Tab`                  | 切换 Plan 模式（进入 / 退出）              |
+| `Tab` (configurable)   | 切换 Plan 模式（进入 / 退出）              |
 | `/plan [提示词]`       | 进入 Plan 模式；带文字时同时作为提示词发送 |
 | `/plan enter [提示词]` | 与 `/plan` 相同                            |
 | `/plan exit [提示词]`  | 退出 Plan 模式；带文字时同时作为提示词发送 |
@@ -16,6 +16,23 @@ pi 扩展：Plan 模式。进入后只允许读取与检查，`edit`/`write` 在
 
 进入后每次请求都会临时追加一段提醒（`# Plan Mode - System Reminder`），退出后追加
 `# Exited Plan Mode`。提醒只作用于当次请求，不写会话记录、不改 system prompt。
+
+## 快捷键配置
+
+默认 `Tab`。覆盖方式（前者优先）：
+
+```bash
+PI_PLAN_SHORTCUT=alt+p pi
+```
+
+```json
+// <agent-dir>/pi-plan.json，agent-dir 默认 ~/.pi/agent，可用 PI_CODING_AGENT_DIR 覆盖
+{ "shortcut": "alt+p" }
+```
+
+键位在扩展加载期解析，改配置后需 `/reload` 生效。`shortcut` 缺失或文件不存在时回落 `Tab`；
+读文件、JSON 解析失败或 `shortcut` 不是非空字符串会直接报错并带上文件路径。键位字符串不做语法
+校验，写错的键位不会报错，只是永远不触发。
 
 ## 安装
 
@@ -51,7 +68,8 @@ pi -e git:github.com/poenl/pi-plan
 ## 已知边界
 
 - **bash 未限制**：`bash` 仍可写文件，Plan 模式靠提示自律，不是强制沙箱。
-- **Tab 被占用**：全局 Tab 会吞掉编辑器的 Tab 补全，这是已知取舍。
+- **默认 Tab 被占用**：默认键位会吞掉编辑器的 Tab 补全，可用 `PI_PLAN_SHORTCUT` 或
+  `pi-plan.json` 换一个键位规避。
 - **与其他扩展的联动**：订阅方订阅 `pi-plan:mode` 事件，负载为 `{ enabled: boolean }`。
 
 ## 开发

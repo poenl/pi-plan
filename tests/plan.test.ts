@@ -1,11 +1,44 @@
-import { describe, expect, test } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
 
 import planExtension, { NORMAL_MODE_REMINDER, PLAN_MODE_EVENT, PLAN_REMINDER } from '../src/index'
+import { SHORTCUT_ENV_VAR } from '../src/shortcut'
 
 type Handler = (...args: unknown[]) => unknown
 type EventHandler = (data: unknown) => void
+
+/** 原始环境变量，用于每个用例结束后还原，避免配置污染开发机。 */
+const ORIGINAL_ENV = {
+  agentDir: process.env.PI_CODING_AGENT_DIR,
+  shortcut: process.env[SHORTCUT_ENV_VAR]
+}
+
+/** 当前用例使用的临时 agent 目录。 */
+let agentDir = ''
+
+beforeEach(() => {
+  // 每个用例一个空目录，让快捷键解析的结果只取决于用例自己写入的配置。
+  agentDir = mkdtempSync(join(tmpdir(), 'pi-plan-test-'))
+  process.env.PI_CODING_AGENT_DIR = agentDir
+  delete process.env[SHORTCUT_ENV_VAR]
+})
+
+afterEach(() => {
+  rmSync(agentDir, { recursive: true, force: true })
+  restoreEnv('PI_CODING_AGENT_DIR', ORIGINAL_ENV.agentDir)
+  restoreEnv(SHORTCUT_ENV_VAR, ORIGINAL_ENV.shortcut)
+})
+
+/** 环境变量还原：原本不存在时删除，而不是写成空串。 */
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+}
 
 /** 替身工具目录；默认与 Pi 内置工具顺序一致，用于验证工具列表保持不变。 */
 const ALL_TOOLS = ['read', 'bash', 'edit', 'write']
@@ -109,6 +142,8 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
     activeTools: () => [...activeTools],
     /** 记录扩展是否重建过 active tools，用于保护缓存稳定性。 */
     setActiveToolsCalls: () => setActiveToolsCalls,
+    /** 已注册的快捷键键位，用于验证配置解析结果。 */
+    shortcutNames: () => [...shortcuts.keys()],
     /** 模拟其他扩展改动活动工具列表。 */
     replaceTools(toolNames: string[]) {
       activeTools = [...toolNames]
@@ -124,6 +159,52 @@ async function injectedContext(runtime: ReturnType<typeof createRuntime>): Promi
   expect(result.messages).toHaveLength(2)
   return result.messages[1]!.content
 }
+
+describe('快捷键配置', () => {
+  /** 写入 pi-plan.json，内容原样保存以便覆盖非法 JSON。 */
+  function writeSettings(content: string): void {
+    writeFileSync(join(agentDir, 'pi-plan.json'), content, 'utf8')
+  }
+
+  test('无配置时注册默认 tab', () => {
+    expect(createRuntime().shortcutNames()).toEqual(['tab'])
+  })
+
+  test('环境变量优先于配置文件', () => {
+    writeSettings(JSON.stringify({ shortcut: 'alt+p' }))
+    process.env[SHORTCUT_ENV_VAR] = 'ctrl+shift+p'
+
+    expect(createRuntime().shortcutNames()).toEqual(['ctrl+shift+p'])
+  })
+
+  test('配置文件里的键位生效', async () => {
+    writeSettings(JSON.stringify({ shortcut: 'alt+p' }))
+
+    const runtime = createRuntime()
+    expect(runtime.shortcutNames()).toEqual(['alt+p'])
+    // 自定义键位装的仍是同一个切换逻辑。
+    await runtime.shortcut('alt+p')
+    expect(runtime.planEvents).toEqual([true])
+  })
+
+  test('缺 shortcut 字段时回落到 tab', () => {
+    writeSettings(JSON.stringify({ other: 1 }))
+
+    expect(createRuntime().shortcutNames()).toEqual(['tab'])
+  })
+
+  test('JSON 解析失败直接抛错', () => {
+    writeSettings('{ not json')
+
+    expect(() => createRuntime()).toThrow(/Failed to parse pi-plan settings/)
+  })
+
+  test('shortcut 不是非空字符串时直接抛错', () => {
+    writeSettings(JSON.stringify({ shortcut: '  ' }))
+
+    expect(() => createRuntime()).toThrow(/Invalid "shortcut"/)
+  })
+})
 
 describe('Plan 模式', () => {
   test('进入、退出按当前状态临时注入提醒，且不写会话记录', async () => {

@@ -9,7 +9,7 @@ A pi extension: Plan mode. While active, only reading and inspection are allowed
 
 | Action                 | Effect                                               |
 | ---------------------- | ---------------------------------------------------- |
-| `Tab`                  | Toggle Plan mode (enter / exit)                      |
+| `Tab` (configurable)   | Toggle Plan mode (enter / exit)                      |
 | `/plan [prompt]`       | Enter Plan mode; with text, also send it as a prompt |
 | `/plan enter [prompt]` | Same as `/plan`                                      |
 | `/plan exit [prompt]`  | Exit Plan mode; with text, also send it as a prompt  |
@@ -18,6 +18,24 @@ A pi extension: Plan mode. While active, only reading and inspection are allowed
 While active, each request gets a temporary reminder (`# Plan Mode - System Reminder`)
 appended; after exiting it gets `# Exited Plan Mode`. The reminder applies to that one
 request only: it is never written to the session and never touches the system prompt.
+
+## Shortcut configuration
+
+Default is `Tab`. Override it with, in priority order:
+
+```bash
+PI_PLAN_SHORTCUT=alt+p pi
+```
+
+```json
+// <agent-dir>/pi-plan.json, agent-dir defaults to ~/.pi/agent and honors PI_CODING_AGENT_DIR
+{ "shortcut": "alt+p" }
+```
+
+The shortcut is resolved at extension load time, so run `/reload` after changing it. A missing
+file or a missing `shortcut` field falls back to `Tab`; a read error, invalid JSON, or a
+`shortcut` that is not a non-empty string throws with the file path. The key string is not
+syntax-checked: a malformed key never fires, it does not raise an error.
 
 ## Install
 
@@ -55,7 +73,8 @@ Design choices:
 
 - **`bash` is not restricted**: `bash` can still write files. Plan mode relies on the
   reminder, it is not a sandbox.
-- **Tab is taken**: the global Tab swallows the editor's Tab completion. Known tradeoff.
+- **Tab is taken by default**: the default Tab swallows the editor's Tab completion. Use
+  `PI_PLAN_SHORTCUT` or `pi-plan.json` to bind another key.
 - **Interop**: subscribers listen on `pi-plan:mode` with payload `{ enabled: boolean }`.
 
 ## Development

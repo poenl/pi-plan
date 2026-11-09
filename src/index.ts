@@ -1,10 +1,13 @@
 import type { AutocompleteItem } from '@earendil-works/pi-tui'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
+import { loadPlanShortcut } from './shortcut'
+
 /**
  * pi-plan — Plan 模式扩展：只读规划，禁止 edit/write 落地。
  *
- * - 进入/退出：/plan（进入）、/plan exit（退出）、/plan status（状态），或 Tab 快捷键切换
+ * - 进入/退出：/plan（进入）、/plan exit（退出）、/plan status（状态），或快捷键切换（默认 Tab）
+ * - 快捷键在加载期解析：环境变量 PI_PLAN_SHORTCUT 优先，其次 <agent-dir>/pi-plan.json 的 shortcut 字段；改后需 /reload
  * - 状态只由本扩展在当前运行时管理，不写入会话记录；reload/新会话后从关闭状态开始
  * - active tools 列表保持不变，避免重建 system prompt，保持工具描述与缓存前缀稳定
  * - context 在每次 LLM 调用前临时注入当前模式提醒（provider 无关，追加到消息末尾），不写会话记录、不改 system prompt
@@ -38,7 +41,8 @@ export default function (pi: ExtensionAPI) {
   // 该参数仅在运行中被读取，空闲时忽略，因此平时行为不变。
   const DELIVER_AS_STEER = { deliverAs: 'steer' } as const
 
-  pi.registerShortcut('tab', {
+  // 键位只能在工厂期注册，配置改动需 /reload 生效。
+  pi.registerShortcut(loadPlanShortcut(), {
     description: '切换 Plan 模式（进入时拦截 edit/write）',
     handler: async (ctx) => {
       const changed = setPlanMode(!planActive)
