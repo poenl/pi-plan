@@ -10,7 +10,8 @@ import { loadPlanShortcut } from './shortcut'
  * - 快捷键在加载期解析：环境变量 PI_PLAN_SHORTCUT 优先，其次 <agent-dir>/pi-plan.json 的 shortcut 字段；改后需 /reload
  * - 状态只由本扩展在当前运行时管理，不写入会话记录；reload/新会话后从关闭状态开始
  * - active tools 列表保持不变，避免重建 system prompt，保持工具描述与缓存前缀稳定
- * - context 在每次 LLM 调用前临时注入当前模式提醒（provider 无关，追加到消息末尾），不写会话记录、不改 system prompt
+ * - context 在每次 LLM 调用前临时注入当前模式提醒（provider 无关，追加到消息末尾），不写会话记录、不改 system prompt；
+ *   Plan 提醒每次注入，退出提醒只在退出后的第一次请求注入一次
  * - 只通过 pi.events 广播状态，不写任何 UI：footer 状态与编辑器徽章由订阅方自行设置
  * - bash 未限制（用户确认，靠提示自律）
  * - 已知 tradeoff：全局 Tab 会吞编辑器 Tab 补全
@@ -29,10 +30,15 @@ export default function (pi: ExtensionAPI) {
   /** 当前运行时 Plan 状态；对外只通过事件暴露给订阅方作为显示镜像。 */
   let planActive = false
 
+  /** 退出提醒是否待发：退出 Plan 时置位，下一次请求注入一次后清除，避免每轮重复。 */
+  let normalReminderPending = false
+
   /** 设置 Plan 状态；不写 session entry、不碰 UI，只发布事件让订阅方刷新显示。 */
   function setPlanMode(enabled: boolean): boolean {
     if (planActive === enabled) return false
     planActive = enabled
+    // 只有真正发生退出才安排一次退出提醒；进入不消费、不置位。
+    if (!enabled) normalReminderPending = true
     pi.events.emit(PLAN_MODE_EVENT, { enabled: planActive } satisfies PlanModeEvent)
     return true
   }
@@ -98,16 +104,25 @@ export default function (pi: ExtensionAPI) {
   // 每次 LLM 调用前按当前状态追加一条临时提醒：context 与 provider 协议无关，
   // Pi 在请求结束后恢复原 transcript，因此不写会话、不碰 system prompt（缓存前缀不变），
   // 请求进行中切换状态对下一条请求即刻生效。
-  pi.on('context', (event) => ({
-    messages: [
-      ...event.messages,
-      {
-        role: 'user',
-        content: planActive ? PLAN_REMINDER : NORMAL_MODE_REMINDER,
-        timestamp: Date.now()
+  pi.on('context', (event) => {
+    if (planActive) {
+      return {
+        messages: [
+          ...event.messages,
+          { role: 'user', content: PLAN_REMINDER, timestamp: Date.now() }
+        ]
       }
-    ]
-  }))
+    }
+    // 未激活：退出提醒只消费一次，之后不再追加任何消息（全新会话也无需退出提醒）。
+    if (!normalReminderPending) return
+    normalReminderPending = false
+    return {
+      messages: [
+        ...event.messages,
+        { role: 'user', content: NORMAL_MODE_REMINDER, timestamp: Date.now() }
+      ]
+    }
+  })
 
   // 工具描述保留在上下文中，仅在执行层硬拦截，覆盖请求进行中发生的状态切换。
   pi.on('tool_call', (event) => {
@@ -119,9 +134,10 @@ export default function (pi: ExtensionAPI) {
     }
   })
 
-  // 新运行时不从会话恢复 Plan；直接置为关闭并广播给订阅方 UI。
+  // 新运行时不从会话恢复 Plan；直接置为关闭并广播给订阅方 UI，退出提醒的待发标志一并清零。
   pi.on('session_start', () => {
     planActive = false
+    normalReminderPending = false
     pi.events.emit(PLAN_MODE_EVENT, { enabled: false } satisfies PlanModeEvent)
   })
 }
@@ -141,7 +157,7 @@ Not having exited plan mode means the plan is not confirmed: output the plan onl
 This constraint is absolutely prioritized, with zero exceptions.
 </system-reminder>`
 
-/** 非 Plan 模式每次请求临时注入的提醒，不写入模型历史。 */
+/** 退出 Plan 后只在下一次请求注入一次的提醒，不写入模型历史。 */
 export const NORMAL_MODE_REMINDER = `<system-reminder>
 # Exited Plan Mode
 

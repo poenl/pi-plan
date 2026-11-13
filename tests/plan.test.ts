@@ -151,13 +151,15 @@ function createRuntime(initialTools: readonly string[] = ALL_TOOLS) {
   }
 }
 
-/** 取 context 事件注入到最后的那条消息内容。 */
-async function injectedContext(runtime: ReturnType<typeof createRuntime>): Promise<string> {
+/** 取 context 事件注入到最后的那条消息内容；无注入时返回 null。 */
+async function injectedContext(runtime: ReturnType<typeof createRuntime>): Promise<string | null> {
   const result = (await runtime.invoke('context', {
     messages: [{ role: 'user', content: 'hi' }]
-  })) as { messages: Array<{ content: string }> }
-  expect(result.messages).toHaveLength(2)
-  return result.messages[1]!.content
+  })) as { messages?: Array<{ content: string }> } | undefined
+  const messages = result?.messages
+  if (!messages) return null
+  expect(messages).toHaveLength(2)
+  return messages[1]!.content
 }
 
 describe('快捷键配置', () => {
@@ -210,8 +212,8 @@ describe('Plan 模式', () => {
   test('进入、退出按当前状态临时注入提醒，且不写会话记录', async () => {
     const runtime = createRuntime()
 
-    // 非 Plan 模式也注入 Normal 提醒，且不写 session entry。
-    expect(await injectedContext(runtime)).toBe(NORMAL_MODE_REMINDER)
+    // 全新会话从未进入过 Plan，不注入退出提醒。
+    expect(await injectedContext(runtime)).toBeNull()
 
     await runtime.command('')
     expect(await injectedContext(runtime)).toBe(PLAN_REMINDER)
@@ -220,7 +222,25 @@ describe('Plan 模式', () => {
 
     await runtime.command('exit')
     expect(await injectedContext(runtime)).toBe(NORMAL_MODE_REMINDER)
+    // 退出提醒只发一次：下一次请求不再追加任何消息。
+    expect(await injectedContext(runtime)).toBeNull()
     expect(runtime.planEvents).toEqual([true, false])
+  })
+
+  test('每次退出对应一次退出提醒', async () => {
+    const runtime = createRuntime()
+
+    await runtime.command('')
+    await runtime.command('exit')
+    expect(await injectedContext(runtime)).toBe(NORMAL_MODE_REMINDER)
+    expect(await injectedContext(runtime)).toBeNull()
+
+    // 再次进入并退出，下一次请求再注入一次。
+    await runtime.command('')
+    expect(await injectedContext(runtime)).toBe(PLAN_REMINDER)
+    await runtime.command('exit')
+    expect(await injectedContext(runtime)).toBe(NORMAL_MODE_REMINDER)
+    expect(await injectedContext(runtime)).toBeNull()
   })
 
   test('命令幂等，Tab 负责切换并发布事件', async () => {
@@ -258,7 +278,8 @@ describe('Plan 模式', () => {
     await runtime.invoke('session_start', {}, runtime.ctx)
 
     expect(runtime.planEvents).toEqual([true, false])
-    expect(await injectedContext(runtime)).toBe(NORMAL_MODE_REMINDER)
+    // 重置后从关闭状态开始，未发生过退出动作，无退出提醒。
+    expect(await injectedContext(runtime)).toBeNull()
   })
 
   test('在工具调用层阻止 edit/write，但不拦 bash', async () => {
